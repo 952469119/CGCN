@@ -5,7 +5,6 @@ import numpy as np
 import random
 
 
-# 将scipy.sparse转为torch.sparse.tensor
 def _convert_sp_mat_to_sp_tensor(X):
     coo = X.tocoo()
     t = torch.from_numpy(np.stack([coo.row, coo.col]).astype(np.int64))
@@ -74,22 +73,17 @@ def count_under_degree_node(G, degree):
 def split_Kn(G, window, max_num_k, min_num_k=3, mode="random"):
     visit = {}
     if mode == "random":
-        # 这个方法意味着随机排列所有的节点，因此度数大的节点更大概率分到更多的kn
         nodes = list(G.nodes())
         random.shuffle(nodes)
     elif mode == "sort":
-        # 这个方法意味着更小的度数的节点会被优先遍历，因此拥有至少一个kn的节点数目会更多
         nodes = nx.degree(G)
         nodes = sorted(nodes, key=lambda x: x[1])
         nodes = [i[0] for i in nodes]
     else:
-        # 按顺序访问，编号小的节点拥有更多kn
         nodes = list(G.nodes())
     for n in nodes:
         visit[n] = 0
 
-    # 对于每个顶点，已经构成过kn的邻居的集合
-    # 这意味着以该顶点为中心进行搜索时，不允许访问这些邻居，该顶点可以通过访问别的邻居构建新的kn，别的顶点依旧可以与该顶点和其邻居构成新的kn
     node_visit_nbr = {}
     for n in nodes:
         node_visit_nbr[n] = set()
@@ -97,9 +91,9 @@ def split_Kn(G, window, max_num_k, min_num_k=3, mode="random"):
     def find_Kn(all_nbr, exist_n, node, k):
         if visit[node] >= window:
             return False
-        # n的邻居
+
         n_nbr = G[node]
-        # 加上n自己本身
+
         exist_n = exist_n.copy()
         exist_n.add(node)
 
@@ -121,15 +115,12 @@ def split_Kn(G, window, max_num_k, min_num_k=3, mode="random"):
                 node_visit_nbr[kn[j]].update(set(kn))
             return True
 
-        # n的邻居中去掉已经存在的
         n_nbr = set(n_nbr) - exist_n
-        # 取所有的邻居与自身邻居的交集
         nbr = n_nbr & all_nbr
-
         nbr = nbr.copy()
         all_n = exist_n.copy()
         nbr_list = list(nbr)
-        # 共同邻居的数量少于需要构成当前kn的数量，剪枝
+
         if len(nbr_list) < k - 1:
             return False
 
@@ -160,7 +151,7 @@ def split_Kn(G, window, max_num_k, min_num_k=3, mode="random"):
             while loop:
                 allow_nbr = set(G[n]) - node_visit_nbr[n]
                 loop = find_Kn(allow_nbr, set(), n, k)
-        # 重新编号,并将字典中的字符串转化为numpy数组
+
         for key in kn_map:
             kn_map[key] = id_index
             kn = key.strip(" ").split(" ")
@@ -169,12 +160,15 @@ def split_Kn(G, window, max_num_k, min_num_k=3, mode="random"):
         all_kn_map.update(kn_map)
         id_maps.append(id_map)
         print(f"numbers of K{k}:{len(id_map)}")
-        # 将node_kn中存的kn信息映射为其的编号
+
     for node in node_kn:
         for i in range(len(node_kn[node])):
             node_kn[node][i] = all_kn_map[node_kn[node][i]]
+    number_kn = 0
+    for node in node_kn:
+        number_kn += len(node_kn[node])
 
-    return node_kn, id_maps
+    return node_kn, id_maps, number_kn
 
 
 def minibatch(*tensors, batch_size):
@@ -211,11 +205,11 @@ def samply_once(item, window):
         for to_node in item[node]:
             edge_dict[to_node] = item[node][to_node]['weight']
         edge_dict = sorted(edge_dict.items(), key=lambda x: x[1], reverse=True)
-        # 低于这个度数的边都要删除
+
         if len(edge_dict) <= window:
             continue
         low_degree = edge_dict[window - 1][1]
-        # 找到所有低于这个度数的边
+
         need_del = []
         need_random = []
         count = 0

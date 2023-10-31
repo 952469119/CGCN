@@ -115,13 +115,9 @@ class BipartiteGraph:
         if args.rank_min_window > 0:
             item = self.get_item_G()
             assert_min_edge(item, samply_G, args.rank_min_window)
-        node_kn, id_map = split_Kn(samply_G, args.num_kn_window, args.max_k, args.min_k, mode='sort')
+        node_kn, id_map,number_kn = split_Kn(samply_G, args.num_kn_window, args.max_k, args.min_k, mode='sort')
 
-        user_kn_G = self.build_user_kn_G(node_kn)
-        user_kn_G = BipartiteGraph(user_kn_G, args.path + args.dataset)
-        user_kn_G.print_n()
-
-        return id_map, user_kn_G
+        return id_map, number_kn
 
     def edge_remove(self, num_k):
         if os.path.exists(self.cache_path + "/item_sample-K" + str(num_k) + ".pkl"):

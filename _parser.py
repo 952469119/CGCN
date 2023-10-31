@@ -6,11 +6,9 @@ def parse_args():
     parser.add_argument('--path', default="./dataset/")
     # ------------------model------------------
     parser.add_argument('--model', default="LightGCN", help='NGCF,LightGCN')
-    parser.add_argument('--kn_model', default="LightGCN", help='NGCF,LightGCN')
     parser.add_argument('--embed_size', type=int, default=64)
-    parser.add_argument('--batch_size', type=int, default=1024)
+    parser.add_argument('--batch_size', type=int, default=2048)
     parser.add_argument('--k_layers', type=int, default=3,help='number of layers in user-item graph')
-    parser.add_argument('--kn_layer', type=int, default=2,help='number of layers in user-cliques graph')
     parser.add_argument('--a', type=float, default=0.8, help='alpha rate')
     parser.add_argument('--node_drop', type=float, default=0, help='node drop')
     parser.add_argument('--mess_drop', type=float, default=0.1, help='mess drop')

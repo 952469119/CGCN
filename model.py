@@ -13,62 +13,51 @@ class mymodel(nn.Module):
         self.emb_size = args.embed_size
         self.decay = args.decay
 
-
         self.user_emb, self.item_emb = self.init_weight(args)
-        self.kn_layer = args.kn_layer
         if args.model == 'LightGCN':
             adj = G.create_adj_mat(mode="norm", self_loop=False).to(self.device)
             self.sage_module = LightGCNlayer(args.k_layers, adj)
         elif args.model == 'NGCF':
             adj = G.create_adj_mat(mode="mean", self_loop=True).to(self.device)
-            self.sage_module = NGCFlayer(args.k_layers, adj,node_drop=args.node_drop, mess_drop=args.mess_drop)
+            self.sage_module = NGCFlayer(args.k_layers, adj, node_drop=args.node_drop, mess_drop=args.mess_drop)
         else:
             exit(0)
 
-        if self.kn_layer > 0:
-            self.a = args.a
-            all_id_map, user_kn_G = G.get_user_kn_G(args)
-            self.n_kn = user_kn_G.n_items
 
-            all_index = {}
-            kns_number = {}
-            for kns in all_id_map:
-                kn_item = []
 
-                for n in kns:
-                    kn_item.append(kns[n])
-                if len(kn_item) == 0:
-                    continue
-                kn_item = np.array(kn_item)
-                k = kn_item.shape[1]
-                kns_number[k] = len(kns)
-                index = kn_item.reshape(-1)
-                all_index[k] = torch.from_numpy(index).to(torch.long).to(self.device)
-                all_index[k] -= self.n_user
-            self.one_index = torch.cat(list(all_index.values()), dim=0)
-            self.all_index = all_index
-            self.kns_number = kns_number
+        self.a = args.a
+        all_id_map, self.n_kn = G.get_user_kn_G(args)
 
-            if args.kn_model == 'LightGCN':
-                user_kn_adj = user_kn_G.create_adj_mat(mode="norm", self_loop=False).to(self.device)
-                self.kn_sage_module = LightGCNlayer(args.kn_layer, user_kn_adj)
-            elif args.kn_model == 'NGCF':
-                user_kn_adj = user_kn_G.create_adj_mat(mode="mean", self_loop=True).to(self.device)
-                self.kn_sage_module = NGCFlayer(args.kn_layer, user_kn_adj, node_drop=args.node_drop,
-                                                mess_drop=args.mess_drop)
-            else:
-                exit(0)
+        all_index = {}
+        kns_number = {}
+        for kns in all_id_map:
+            kn_item = []
+
+            for n in kns:
+                kn_item.append(kns[n])
+            if len(kn_item) == 0:
+                continue
+            kn_item = np.array(kn_item)
+            k = kn_item.shape[1]
+            kns_number[k] = len(kns)
+            index = kn_item.reshape(-1)
+            all_index[k] = torch.from_numpy(index).to(torch.long).to(self.device)
+            all_index[k] -= self.n_user
+        self.one_index = torch.cat(list(all_index.values()), dim=0)
+        self.all_index = all_index
+        self.kns_number = kns_number
+
 
     def init_weight(self, args):
 
         embedding_user = torch.nn.Embedding(num_embeddings=self.n_user, embedding_dim=self.emb_size)
         embedding_item = torch.nn.Embedding(num_embeddings=self.n_item, embedding_dim=self.emb_size)
-        if args.kn_model == "NGCF":
+        if args.model == "NGCF":
             # xavier init
             initializer = nn.init.xavier_uniform_
             embedding_user = initializer(embedding_user.weight)
             embedding_item = initializer(embedding_item.weight)
-        elif args.kn_model == "LightGCN":
+        elif args.model == "LightGCN":
             initializer = nn.init.normal_
             embedding_user = initializer(embedding_user.weight, std=0.1)
             embedding_item = initializer(embedding_item.weight, std=0.1)
@@ -99,11 +88,11 @@ class mymodel(nn.Module):
 
         return item
 
-    def kn_net_forward(self):
+    def kn_net_forward(self, u_emb, i_emb):
 
-        kn_emb = self.item_to_kn(self.item_emb)
+        kn_emb = self.item_to_kn(i_emb)
 
-        kn_sage_emb = self.kn_sage_module(self.user_emb, kn_emb)
+        kn_sage_emb = torch.cat([u_emb, kn_emb], dim=0)
 
         user_emb = kn_sage_emb[:self.n_user]
         kn_emb = kn_sage_emb[self.n_user:]
@@ -131,11 +120,8 @@ class mymodel(nn.Module):
 
         sage_emb = self.sage_module(self.user_emb, self.item_emb)
 
-        if self.kn_layer > 0:
-            kn_sage_emb = self.kn_net_forward()
-            out = torch.cat([sage_emb, kn_sage_emb], dim=1)
-        else:
-            out = sage_emb
+        kn_sage_emb = self.kn_net_forward(sage_emb[:self.n_user], sage_emb[self.n_user:])
+        out = torch.cat([sage_emb, kn_sage_emb], dim=1)
 
         user_emb = out[:self.n_user]
         item_emb = out[self.n_user:]
